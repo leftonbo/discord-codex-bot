@@ -215,10 +215,23 @@ async function handleSlashCommand(interaction: ChatInputCommandInteraction) {
       await interaction.reply("このコマンドはスレッド内でのみ使用できます。");
       return;
     }
+    const thread = interaction.channel;
     await interaction.deferReply();
-    const result = await admin.closeThread(interaction.channel.id);
+    const result = await admin.closeThread(thread.id);
     if (result.isErr()) {
       await interaction.editReply("クローズに失敗しました。");
+      return;
+    }
+    try {
+      if (!thread.archived) {
+        await thread.setArchived(true, "/close command");
+      }
+    } catch (error) {
+      await interaction.editReply(
+        `内部クローズは完了しましたが、Discordスレッドのクローズに失敗しました: ${
+          (error as Error).message
+        }`,
+      );
       return;
     }
     await interaction.editReply("✅ スレッドをクローズしました。");
@@ -336,6 +349,8 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
 
 client.on(Events.ThreadUpdate, async (oldThread, newThread) => {
   if (!oldThread.archived && newThread.archived) {
+    const threadInfo = await workspaceManager.loadThreadInfo(newThread.id);
+    if (threadInfo?.status === "archived") return;
     await admin.terminateThread(newThread.id);
   }
 });
