@@ -15,6 +15,23 @@ export type EnvError = {
   message: string;
 };
 
+function expandHomeDirectory(path: string): Result<string, EnvError> {
+  if (path !== "~" && !path.startsWith("~/")) {
+    return ok(path);
+  }
+
+  const home = Deno.env.get("HOME");
+  if (!home) {
+    return err({
+      type: "MISSING_ENV_VAR",
+      variable: "HOME",
+      message: "HOME is not set; cannot expand WORK_BASE_DIR",
+    });
+  }
+
+  return ok(path === "~" ? home : `${home}${path.slice(1)}`);
+}
+
 export function getEnv(): Result<Env, EnvError> {
   const token = Deno.env.get("DISCORD_TOKEN");
   const workBaseDir = Deno.env.get("WORK_BASE_DIR");
@@ -36,9 +53,14 @@ export function getEnv(): Result<Env, EnvError> {
     });
   }
 
+  const expandedWorkBaseDir = expandHomeDirectory(workBaseDir);
+  if (expandedWorkBaseDir.isErr()) {
+    return err(expandedWorkBaseDir.error);
+  }
+
   return ok({
     DISCORD_TOKEN: token,
-    WORK_BASE_DIR: workBaseDir,
+    WORK_BASE_DIR: expandedWorkBaseDir.value,
     CODEX_APPEND_SYSTEM_PROMPT: codexAppendSystemPrompt,
   });
 }
