@@ -1,0 +1,61 @@
+import { assertEquals } from "std/assert/mod.ts";
+import {
+  formatCodexStatusDelta,
+  formatCodexStatusPresence,
+  parseCodexStatus,
+  stripTerminalControlSequences,
+} from "../src/codex-status.ts";
+
+Deno.test("parseCodexStatus: Codex TUIのstatus表示から利用制限を抽出する", () => {
+  const output = [
+    "\x1b[2m│  5h limit:             \x1b[22m[███████████████░░░░░] 73% left\x1b[2m (resets 23:57)            │\x1b[m",
+    "\x1b[2m│  Weekly limit:         \x1b[22m[█████████████████░░░] 83% left\x1b[2m                │\x1b[m",
+    "\x1b[2m│                        (resets 18:06 on 17 May)                       │\x1b[m",
+  ].join("\n");
+
+  const result = parseCodexStatus(output);
+
+  assertEquals(result.isOk(), true);
+  const status = result._unsafeUnwrap();
+  assertEquals(status.fiveHour, { percentLeft: 73, resets: "23:57" });
+  assertEquals(status.weekly, {
+    percentLeft: 83,
+    resets: "18:06 on 17 May",
+  });
+});
+
+Deno.test("formatCodexStatusDelta: 投稿前後の差分をkotlinブロック用の1行にする", () => {
+  const before = {
+    fiveHour: { percentLeft: 80, resets: "23:57" },
+    weekly: { percentLeft: 54, resets: "18:06 on 17 May" },
+    capturedAt: "2026-05-13T00:00:00.000Z",
+  };
+  const after = {
+    fiveHour: { percentLeft: 68, resets: "23:57" },
+    weekly: { percentLeft: 52, resets: "18:06 on 17 May" },
+    capturedAt: "2026-05-13T00:01:00.000Z",
+  };
+
+  assertEquals(
+    formatCodexStatusDelta(before, after),
+    "5h limit 80% → 68% (resets 23:57) / Weekly limit 54% → 52% (resets 18:06 on 17 May)",
+  );
+});
+
+Deno.test("formatCodexStatusPresence: Discord status向けに短く整形する", () => {
+  assertEquals(
+    formatCodexStatusPresence({
+      fiveHour: { percentLeft: 73, resets: "23:57" },
+      weekly: { percentLeft: 83, resets: "18:06 on 17 May" },
+      capturedAt: "2026-05-13T00:00:00.000Z",
+    }),
+    "5h 73% (23:57) / W 83% (18:06 on 17 May)",
+  );
+});
+
+Deno.test("stripTerminalControlSequences: ANSI制御シーケンスを除去する", () => {
+  assertEquals(
+    stripTerminalControlSequences("\x1b[2m5h limit\x1b[m\x1b]0;title\x07"),
+    "5h limit",
+  );
+});
