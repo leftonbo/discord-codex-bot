@@ -19,6 +19,7 @@ import type {
   SavedAttachment,
 } from "./attachments.ts";
 import { Admin } from "./admin/admin.ts";
+import type { AdminError } from "./admin/types.ts";
 import { MESSAGES } from "./constants.ts";
 import { getEnv } from "./env.ts";
 import { ensureRepository, parseRepository } from "./git-utils.ts";
@@ -35,6 +36,53 @@ function chunkDiscordContent(content: string): string[] {
   return splitIntoDiscordChunks(content).filter((chunk) =>
     chunk.trim().length > 0
   );
+}
+
+const MAX_ERROR_DETAIL_LENGTH = 6000;
+
+function formatErrorDetail(detail: string): string {
+  const normalized = detail.trim() || "(詳細なし)";
+  if (normalized.length <= MAX_ERROR_DETAIL_LENGTH) {
+    return normalized;
+  }
+  return `${
+    normalized.slice(0, MAX_ERROR_DETAIL_LENGTH)
+  }\n...詳細が長すぎるため省略しました`;
+}
+
+function formatAdminErrorForDiscord(error: AdminError): string {
+  switch (error.type) {
+    case "WORKER_NOT_FOUND":
+      return [
+        "エラー: WORKER_NOT_FOUND",
+        `スレッドID: ${error.threadId}`,
+      ].join("\n");
+    case "WORKER_CREATE_FAILED":
+      return [
+        "エラー: WORKER_CREATE_FAILED",
+        `スレッドID: ${error.threadId}`,
+        `詳細: ${formatErrorDetail(error.reason)}`,
+      ].join("\n");
+    case "CODEX_EXECUTION_FAILED":
+      return [
+        "エラー: CODEX_EXECUTION_FAILED",
+        `スレッドID: ${error.threadId}`,
+        "詳細:",
+        formatErrorDetail(error.error),
+      ].join("\n");
+    case "WORKSPACE_ERROR":
+      return [
+        "エラー: WORKSPACE_ERROR",
+        `操作: ${error.operation}`,
+        "詳細:",
+        formatErrorDetail(error.error),
+      ].join("\n");
+    case "RATE_LIMIT":
+      return [
+        "エラー: RATE_LIMIT",
+        `詳細: ${formatErrorDetail(error.message)}`,
+      ].join("\n");
+  }
 }
 
 function getAttachmentDownloadInputs(
@@ -493,7 +541,16 @@ client.on(Events.MessageCreate, async (message) => {
       await sendThreadMessage(thread, admin.createRateLimitMessage());
       return;
     }
-    await sendThreadMessage(thread, `エラー: ${result.error.type}`);
+    for (
+      const chunk of chunkDiscordContent(
+        formatAdminErrorForDiscord(result.error),
+      )
+    ) {
+      await sendThreadMessage(thread, {
+        content: chunk,
+        flags: MessageFlags.SuppressNotifications,
+      });
+    }
     return;
   }
 

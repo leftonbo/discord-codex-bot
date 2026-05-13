@@ -117,9 +117,16 @@ export class Admin implements IAdmin {
           message: result.error.message,
         });
       }
+      if (result.error.workerErrorType === "WORKSPACE_ERROR") {
+        return err({
+          type: "WORKSPACE_ERROR",
+          operation: "routeMessage",
+          error: result.error.error,
+        });
+      }
       return err({
-        type: "WORKSPACE_ERROR",
-        operation: "routeMessage",
+        type: "CODEX_EXECUTION_FAILED",
+        threadId,
         error: result.error.error,
       });
     }

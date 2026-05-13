@@ -1,5 +1,6 @@
 import { err, ok, Result } from "neverthrow";
 import type { SavedAttachment } from "../attachments.ts";
+import type { WorkerError } from "../worker/types.ts";
 import type { DiscordMessage } from "./types.ts";
 import { WorkerManager } from "./worker-manager.ts";
 
@@ -11,7 +12,26 @@ export type MessageRouterError =
     timestamp?: number;
     message: string;
   }
-  | { type: "MESSAGE_PROCESSING_ERROR"; threadId: string; error: string };
+  | {
+    type: "MESSAGE_PROCESSING_ERROR";
+    threadId: string;
+    workerErrorType: WorkerError["type"];
+    error: string;
+  };
+
+function formatWorkerError(error: WorkerError): string {
+  switch (error.type) {
+    case "CODEX_EXECUTION_FAILED":
+      return error.error;
+    case "WORKSPACE_ERROR":
+    case "SESSION_LOG_FAILED":
+      return `${error.operation}: ${error.error}`;
+    case "REPOSITORY_NOT_SET":
+      return "Repository is not set.";
+    case "RATE_LIMIT":
+      return error.message;
+  }
+}
 
 export class MessageRouter {
   constructor(private readonly workerManager: WorkerManager) {}
@@ -56,9 +76,8 @@ export class MessageRouter {
       return err({
         type: "MESSAGE_PROCESSING_ERROR",
         threadId,
-        error: error.type === "CODEX_EXECUTION_FAILED"
-          ? error.error
-          : JSON.stringify(error),
+        workerErrorType: error.type,
+        error: formatWorkerError(error),
       });
     }
 
