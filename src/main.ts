@@ -28,6 +28,7 @@ import {
   formatCodexStatus,
   formatCodexStatusDelta,
   formatCodexStatusPresence,
+  stripTerminalControlSequences,
 } from "./codex-status.ts";
 import {
   formatCodexUpdateError,
@@ -396,11 +397,34 @@ async function refreshCodexStatus(
 async function getAndApplyCodexStatus(cwd: string) {
   const result = await codexStatusProvider.getStatus(cwd);
   if (result.isErr()) {
-    console.error("[CodexStatus] failed", result.error);
+    console.error(
+      "[CodexStatus] failed",
+      formatCodexStatusErrorForLog(result.error),
+    );
     return result;
   }
   updateDiscordPresence(result.value);
   return result;
+}
+
+function formatCodexStatusErrorForLog(
+  error: CodexStatusError,
+): CodexStatusError {
+  if (!("output" in error)) {
+    return error;
+  }
+  return {
+    ...error,
+    output: truncateLogOutput(error.output),
+  };
+}
+
+function truncateLogOutput(output: string): string {
+  const cleaned = stripTerminalControlSequences(output)
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length <= 10) return cleaned;
+  return `${cleaned.slice(0, 10)}...`;
 }
 
 function formatCodexStatusError(error: CodexStatusError): string {

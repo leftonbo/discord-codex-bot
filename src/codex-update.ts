@@ -61,9 +61,9 @@ export async function updateCodexCli(
 }
 
 export function formatCodexUpdateResult(result: CodexUpdateResult): string {
-  const output = result.output.trim();
+  const output = formatCodexUpdateOutput(result.output);
   return output
-    ? `Codex update が完了しました。\n\n${truncate(output)}`
+    ? `Codex update が完了しました。\n\n${output}`
     : "Codex update が完了しました。";
 }
 
@@ -96,4 +96,13 @@ function truncate(text: string, limit = 1800): string {
   const trimmed = text.trim();
   if (trimmed.length <= limit) return trimmed;
   return `${trimmed.slice(-limit)}\n...前半を省略しました`;
+}
+
+function formatCodexUpdateOutput(output: string): string {
+  return output
+    .trim()
+    .replace(
+      /Please restart Codex\./g,
+      "BOT は Codex を実行ごとに起動するため、通常は追加の restart は不要です。",
+    );
 }
