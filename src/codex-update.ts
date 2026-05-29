@@ -3,6 +3,7 @@ import { err, ok, Result } from "neverthrow";
 export interface CodexUpdateResult {
   code: number;
   output: string;
+  version?: string;
 }
 
 export type CodexUpdateError =
@@ -51,7 +52,11 @@ export async function updateCodexCli(
     if (status.code !== 0) {
       return err({ type: "COMMAND_FAILED", code: status.code, output });
     }
-    return ok({ code: status.code, output });
+    return ok({
+      code: status.code,
+      output,
+      version: await getCodexVersion(),
+    });
   } catch (error) {
     return err({
       type: "UPDATE_UNAVAILABLE",
@@ -61,10 +66,16 @@ export async function updateCodexCli(
 }
 
 export function formatCodexUpdateResult(result: CodexUpdateResult): string {
+  const title = result.version
+    ? `🎉 Update ran successfully! (${result.version})`
+    : "🎉 Update ran successfully!";
   const output = formatCodexUpdateOutput(result.output);
-  return output
-    ? `Codex update が完了しました。\n\n${output}`
-    : "Codex update が完了しました。";
+  const outputBlock = output ? `\`\`\`\n${output}\n\`\`\`` : undefined;
+  return [
+    title,
+    outputBlock,
+    "BOT は Codex を実行ごとに起動するため、再起動などは必要ないよ。",
+  ].filter(Boolean).join("\n\n");
 }
 
 export function formatCodexUpdateError(error: CodexUpdateError): string {
@@ -84,12 +95,30 @@ export function formatCodexUpdateError(error: CodexUpdateError): string {
   }
 }
 
-function decodeOutput(output: ArrayBuffer): string {
+function decodeOutput(output: ArrayBuffer | Uint8Array): string {
   return new TextDecoder().decode(output);
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getCodexVersion(): Promise<string | undefined> {
+  try {
+    const command = new Deno.Command("codex", {
+      args: ["--version"],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code, stdout, stderr } = await command.output();
+    if (code !== 0) return undefined;
+    const versionOutput = decodeOutput(stdout).trim() ||
+      decodeOutput(stderr).trim();
+    const version = versionOutput.split(/\r?\n/)[0]?.trim();
+    return version || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function truncate(text: string, limit = 1800): string {
@@ -101,8 +130,8 @@ function truncate(text: string, limit = 1800): string {
 function formatCodexUpdateOutput(output: string): string {
   return output
     .trim()
-    .replace(
-      /Please restart Codex\./g,
-      "BOT は Codex を実行ごとに起動するため、通常は追加の restart は不要です。",
-    );
+    .split(/\r?\n/)
+    .filter((line) => !line.includes("Update ran successfully!"))
+    .join("\n")
+    .trim();
 }
